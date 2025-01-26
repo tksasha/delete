@@ -6,11 +6,13 @@ default: vet fix fmt lint
 
 .PHONY: vet
 vet:
-	go vet
+	@echo "go vet"
+	@go vet ./...
 
 .PHONY: fix
 fix:
-	go fix
+	@echo "go fix"
+	@go fix ./...
 
 .PHONY: fmt
 fmt:
@@ -22,11 +24,18 @@ lint:
 	@echo "go lint"
 	@go run $(LINTER) run
 
+.PHONY: run
 run:
-	@go run main.go
+	go run main.go
 
+.PHONY: build
 build:
-	@go build -o delete main.go
+	go build -o delete main.go
 
+.PHONY: clean
 clean:
-	@rm -f delete
+	rm -f delete
+
+.PHONY: install
+install:
+	mv delete ~/bin

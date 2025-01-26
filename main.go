@@ -1,47 +1,39 @@
 package main
 
 import (
+	"flag"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
+	"runtime"
 	"sync"
+	"time"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatal("use delete PATH")
+	workers := flag.Int("workers", runtime.GOMAXPROCS(0), "number of workers")
+
+	flag.Parse()
+
+	if len(flag.Args()) < 1 {
+		log.Fatal("use: delete [-workers=N] PATH")
 	}
 
-	path := os.Args[1]
+	path := flag.Args()[0]
 
 	var wg sync.WaitGroup
 
 	files := make(chan string)
 
-	for id := range 100 {
+	for worker := range *workers {
 		wg.Add(1)
 
-		go func(id int, files chan string) {
+		go func(worker int, files chan string) {
 			defer wg.Done()
 
-			for file := range files {
-				log.Printf("id: %d, file: %s", id, file)
-
-				if err := os.Remove(file); err != nil {
-					log.Fatalf("failed to remove file %s, error: %v", file, err)
-				}
-			}
-		}(id, files)
-	}
-
-	for id := range 100 {
-		filename := filepath.Join(path, strconv.Itoa(id))
-
-		if _, err := os.Create(filename); err != nil {
-			log.Fatalf("failed to create file, error: %v", err)
-		}
+			delete(worker, files)
+		}(worker, files)
 	}
 
 	walk(path, files)
@@ -70,5 +62,17 @@ func walk(path string, files chan string) {
 
 	if err := filepath.Walk(path, callback); err != nil {
 		log.Fatalf("failed to walk, error: %v", err)
+	}
+}
+
+func delete(worker int, files chan string) {
+	for file := range files {
+		start := time.Now()
+
+		log.Printf("%d -> %s %v", worker, file, time.Since(start))
+
+		if err := os.Remove(file); err != nil {
+			log.Fatalf("failed to remove file %s, error: %v", file, err)
+		}
 	}
 }
