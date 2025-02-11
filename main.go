@@ -14,18 +14,51 @@ import (
 	"time"
 )
 
-var errUsage = errors.New("use: delete [-workers=n] directory")
-
 func main() {
-	workers, root, err := prepare()
-	if err != nil {
+	workers, root := prepare()
+
+	confirm(root)
+
+	queue, wg := run(workers)
+
+	process(root, queue)
+
+	close(queue)
+
+	wg.Wait()
+}
+
+func prepare() (int, string) {
+	log.SetFlags(0)
+
+	workers := flag.Int("workers", runtime.GOMAXPROCS(0), "numbers of workers")
+
+	flag.Parse()
+
+	if len(flag.Args()) == 0 {
+		log.Fatal("use: delete [-workers=n] directory")
+	}
+
+	root := flag.Args()[0]
+
+	return *workers, root
+}
+
+func confirm(path string) {
+	log.Printf("Are you sure to delete %s? (y/n)", path)
+
+	var response string
+
+	if _, err := fmt.Scanln(&response); err != nil {
 		log.Fatal(err)
 	}
 
-	if !confirmDelete(root) {
+	if strings.ToLower(response) != "y" {
 		os.Exit(1)
 	}
+}
 
+func run(workers int) (chan string, *sync.WaitGroup) {
 	queue := make(chan string, workers)
 
 	var wg sync.WaitGroup
@@ -40,40 +73,10 @@ func main() {
 		}(id)
 	}
 
-	walk(root, queue)
-
-	close(queue)
-
-	wg.Wait()
+	return queue, &wg
 }
 
-func prepare() (int, string, error) {
-	log.SetFlags(0)
-
-	workers := flag.Int("workers", runtime.GOMAXPROCS(0), "numbers of workers")
-
-	flag.Parse()
-
-	if len(flag.Args()) == 0 {
-		return 0, "", errUsage
-	}
-
-	root := flag.Args()[0]
-
-	return *workers, root, nil
-}
-
-func confirmDelete(path string) bool {
-	log.Printf("Are you sure to delete %s? (y/n)", path)
-
-	var response string
-
-	fmt.Scanln(&response)
-
-	return strings.ToLower(response) == "y"
-}
-
-func walk(root string, queue chan<- string) {
+func process(root string, queue chan<- string) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		log.Fatal(err)
@@ -105,7 +108,7 @@ func walk(root string, queue chan<- string) {
 				continue // dir is empty, go to the next entry
 			}
 
-			walk(path, queue)
+			process(path, queue)
 
 			continue // the entry is dir, skip it
 		}
