@@ -1,3 +1,4 @@
+MAIN=main.go
 FORMATTER=mvdan.cc/gofumpt@latest
 LINTER=github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
@@ -26,11 +27,11 @@ lint:
 
 .PHONY: run
 run:
-	go run main.go
+	go run $(MAIN)
 
 .PHONY: build
 build:
-	go build -o delete main.go
+	go build -o delete $(MAIN)
 
 .PHONY: clean
 clean:

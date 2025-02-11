@@ -1,8 +1,9 @@
 package main
 
 import (
+	"errors"
 	"flag"
-	"io/fs"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,67 +13,109 @@ import (
 )
 
 func main() {
-	workers := flag.Int("workers", runtime.GOMAXPROCS(0), "number of workers")
+	log.SetFlags(0)
+
+	workers := flag.Int("workers", runtime.GOMAXPROCS(0), "numbers of workers")
 
 	flag.Parse()
 
-	if len(flag.Args()) < 1 {
-		log.Fatal("use: delete [-workers=N] PATH")
+	if len(flag.Args()) == 0 {
+		log.Print("use: delete [-workers=n] directory")
+
+		os.Exit(1)
 	}
 
-	path := flag.Args()[0]
+	root := flag.Args()[0]
+
+	queue := make(chan string, *workers)
 
 	var wg sync.WaitGroup
 
-	files := make(chan string)
-
-	for worker := range *workers {
+	for id := range *workers {
 		wg.Add(1)
 
-		go func(worker int, files chan string) {
+		go func(id int) {
 			defer wg.Done()
 
-			delete(worker, files)
-		}(worker, files)
+			worker(id, queue)
+		}(id)
 	}
 
-	walk(path, files)
+	walk(root, queue)
+
+	close(queue)
 
 	wg.Wait()
 }
 
-func walk(path string, files chan string) {
-	defer func() {
-		close(files)
-	}()
-
-	callback := func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			log.Printf("error: %v", err)
-
-			return err
-		}
-
-		if !info.IsDir() {
-			files <- path
-		}
-
-		return nil
+func walk(root string, queue chan<- string) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		panic(err)
 	}
 
-	if err := filepath.Walk(path, callback); err != nil {
-		log.Fatalf("failed to walk, error: %v", err)
+	for _, entry := range entries {
+		path := filepath.Join(root, entry.Name())
+
+		if entry.IsDir() {
+			dir, err := os.Open(path) //nolint:gosec
+			if err != nil {
+				continue
+			}
+
+			dirs, err := dir.Readdirnames(1)
+			if err != nil && !errors.Is(err, io.EOF) {
+				log.Printf("failed to read dir names in directory %s: %v", dir.Name(), err)
+
+				continue
+			}
+
+			if err := dir.Close(); err != nil {
+				log.Printf("failed to close directory %s: %v", dir.Name(), err)
+			}
+
+			if len(dirs) == 0 {
+				queue <- path
+
+				continue // dir is empty, go to the next entry
+			}
+
+			walk(path, queue)
+
+			continue // the entry is dir, skip it
+		}
+
+		queue <- path
 	}
 }
 
-func delete(worker int, files chan string) {
-	for file := range files {
-		start := time.Now()
+func remove(path string) (string, error) {
+	if err := os.Remove(path); err != nil {
+		return ".", err
+	}
 
-		log.Printf("%d -> %s %v", worker, file, time.Since(start))
+	return filepath.Dir(path), nil
+}
 
-		if err := os.Remove(file); err != nil {
-			log.Fatalf("failed to remove file %s, error: %v", file, err)
+func worker(id int, queue <-chan string) {
+	for path := range queue {
+		for {
+			start := time.Now()
+
+			var err error
+
+			path, err = remove(path)
+			if err != nil {
+				break
+			}
+
+			log.Printf("%d -> %s %v\n", id, path, time.Since(start))
+
+			if path == "." {
+				log.Printf("%d -> done\n", id)
+
+				break
+			}
 		}
 	}
 }
