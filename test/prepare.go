@@ -7,14 +7,14 @@ import (
 )
 
 const (
-	depth = 3
-	dirs  = 3
-	files = 10
+	depth = 1
+	dirs  = 1
+	files = 1
 
 	dirPerms  = 0o750 // rwxr-x---
 	filePerms = 0o640 // rw-r-----
 
-	root = "__fs"
+	root = "test/__fs"
 )
 
 func main() {

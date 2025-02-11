@@ -40,3 +40,10 @@ clean:
 .PHONY: install
 install:
 	mv delete ~/bin
+
+.PHONY: test
+test: build
+	@echo "preparing test fs..."
+	@go run test/prepare.go
+	@./delete test/__fs
+	@make clean

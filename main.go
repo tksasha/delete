@@ -3,35 +3,34 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
 
+var errUsage = errors.New("use: delete [-workers=n] directory")
+
 func main() {
-	log.SetFlags(0)
+	workers, root, err := prepare()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	workers := flag.Int("workers", runtime.GOMAXPROCS(0), "numbers of workers")
-
-	flag.Parse()
-
-	if len(flag.Args()) == 0 {
-		log.Print("use: delete [-workers=n] directory")
-
+	if !confirmDelete(root) {
 		os.Exit(1)
 	}
 
-	root := flag.Args()[0]
-
-	queue := make(chan string, *workers)
+	queue := make(chan string, workers)
 
 	var wg sync.WaitGroup
 
-	for id := range *workers {
+	for id := range workers {
 		wg.Add(1)
 
 		go func(id int) {
@@ -48,10 +47,36 @@ func main() {
 	wg.Wait()
 }
 
+func prepare() (int, string, error) {
+	log.SetFlags(0)
+
+	workers := flag.Int("workers", runtime.GOMAXPROCS(0), "numbers of workers")
+
+	flag.Parse()
+
+	if len(flag.Args()) == 0 {
+		return 0, "", errUsage
+	}
+
+	root := flag.Args()[0]
+
+	return *workers, root, nil
+}
+
+func confirmDelete(path string) bool {
+	log.Printf("Are you sure to delete %s? (y/n)", path)
+
+	var response string
+
+	fmt.Scanln(&response)
+
+	return strings.ToLower(response) == "y"
+}
+
 func walk(root string, queue chan<- string) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	for _, entry := range entries {
