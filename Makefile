@@ -1,4 +1,4 @@
-MAIN=cmd/delete/main.go
+MAIN=main.go
 FORMATTER=mvdan.cc/gofumpt@latest
 LINTER=github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
